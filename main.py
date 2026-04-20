@@ -1,22 +1,16 @@
-import os
-
-import telebot
 from dotenv import load_dotenv
 
-load_dotenv()
-
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-if not TOKEN:
-    raise ValueError("No se encontró TELEGRAM_BOT_TOKEN en el .env")
-
-bot = telebot.TeleBot(TOKEN)
+from finance_bot.bot import FinanceBotApp
+from finance_bot.config import load_settings
 
 
-@bot.message_handler(commands=["start"])
-def send_welcome(message):
-    bot.reply_to(message, "Hi there, I am helpertron.")
+def main() -> None:
+    load_dotenv()
+    settings = load_settings()
+    app = FinanceBotApp(settings)
+    print("Bot iniciado...")
+    app.run()
 
 
-print("Bot iniciado...")
-bot.infinity_polling()
+if __name__ == "__main__":
+    main()

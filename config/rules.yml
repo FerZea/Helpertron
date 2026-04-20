@@ -1,0 +1,13 @@
+rules:
+  uber: transporte
+  didi: transporte
+  taxi: transporte
+  gasolina: transporte
+  oxxo: comida
+  restaurante: comida
+  super: comida
+  netflix: entretenimiento
+  spotify: entretenimiento
+  luz: servicios
+  agua: servicios
+  internet: servicios

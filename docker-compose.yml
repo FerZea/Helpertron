@@ -1,0 +1,10 @@
+services:
+  financebot:
+    build: .
+    container_name: financebot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./config:/app/config
+      - ./credentials:/app/credentials:ro

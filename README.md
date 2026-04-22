@@ -4,10 +4,13 @@ Bot personal de finanzas en Python para registrar gastos desde Telegram y guarda
 
 Cuando envias un mensaje como `Uber 200`, el bot:
 - interpreta descripcion y monto,
-- asigna categoria automaticamente por reglas configurables,
-- guarda una fila en Google Sheets con fecha/hora del mensaje.
+- asigna categoria automaticamente con flujo hibrido (reglas -> OpenRouter -> `otros`),
+- guarda una fila en Google Sheets con fecha/hora del mensaje,
+- mantiene una hoja de dashboard con tablas y graficas.
 
-## Que guarda en la hoja
+## Que guarda en Google Sheets
+
+### Hoja 1: gastos (`SHEETS_WORKSHEET`)
 
 Columnas generadas automaticamente:
 - `timestamp_utc`
@@ -19,6 +22,14 @@ Columnas generadas automaticamente:
 - `telegram_message_id`
 
 `timestamp_utc` y `timestamp_local` salen del timestamp real del mensaje de Telegram (`message.date`).
+
+### Hoja 2: dashboard (`SHEETS_DASHBOARD_WORKSHEET`)
+
+Se crea/actualiza automaticamente una segunda hoja con:
+- tabla de gasto total por categoria,
+- tabla de tendencia mensual,
+- grafica de pastel: **Gasto por categoria**,
+- grafica de columnas: **Tendencia mensual**.
 
 ## Requisitos
 
@@ -71,12 +82,43 @@ GOOGLE_SERVICE_ACCOUNT_FILE=credentials/google-service-account.json
 TIMEZONE=America/Mexico_City
 DEFAULT_CURRENCY=MXN
 SHEETS_WORKSHEET=expenses
+SHEETS_DASHBOARD_WORKSHEET=dashboard
+
+# OpenRouter (opcional)
+OPENROUTER_API_KEY=
+OPENROUTER_API_KEY_FILE=
+OPENROUTER_MODEL=openai/gpt-4o-mini
+OPENROUTER_TIMEOUT_SECONDS=15
+OPENROUTER_BASE_URL=https://openrouter.ai/api/v1/chat/completions
+OPENROUTER_SITE_URL=
+OPENROUTER_APP_NAME=financebot
 ```
 
 Notas:
 - `ALLOWED_CHAT_ID`: solo ese chat puede usar el bot.
 - `GOOGLE_SHEETS_ID`: ID de la hoja, no la URL completa.
 - `SHEETS_WORKSHEET`: si no existe, el bot la crea.
+- `SHEETS_DASHBOARD_WORKSHEET`: hoja separada para resumen y graficas.
+- `OPENROUTER_API_KEY` y `OPENROUTER_API_KEY_FILE` son excluyentes; si defines ambos, se usa `OPENROUTER_API_KEY`.
+- Si no defines API key de OpenRouter, la categorizacion queda solo por reglas y fallback a `otros`.
+
+### 4.1) Recomendado en servidor: usar archivo secreto, no `.env`
+
+Si no quieres exponer tu API key en `.env`, crea un archivo de secreto fuera del repo:
+
+```bash
+mkdir -p /run/secrets
+printf '%s' 'sk-or-...' > /run/secrets/openrouter_api_key
+chmod 600 /run/secrets/openrouter_api_key
+```
+
+Y configura solo:
+
+```env
+OPENROUTER_API_KEY_FILE=/run/secrets/openrouter_api_key
+```
+
+El bot no imprime la clave en logs ni en respuestas de error.
 
 ### 5) Levantar el bot con Docker
 
@@ -105,7 +147,8 @@ Ejemplos:
 Reglas:
 - el monto debe ser mayor que 0,
 - acepta `.` o `,` como decimal,
-- si no hay regla que coincida, usa categoria `otros`.
+- si no hay regla que coincida y OpenRouter esta configurado, intenta categorizar por IA,
+- si OpenRouter no esta configurado o falla, usa categoria `otros`.
 
 ### Comandos disponibles
 
@@ -128,6 +171,15 @@ Ejemplo:
 - Reglas iniciales: `config/rules.yml`
 
 Tambien puedes manejar reglas desde Telegram con `/addrule` y `/delrule`.
+
+## Categorizacion por OpenRouter
+
+Flujo de decision:
+1. Busca coincidencia por palabra clave en reglas locales.
+2. Si no hay match, consulta OpenRouter con la descripcion y las categorias permitidas.
+3. Si la respuesta no es valida o hay error de red/API, usa `otros`.
+
+Esto evita depender 100% de IA y mantiene comportamiento robusto ante fallas.
 
 ## Ejecutar tests (sin Docker)
 
@@ -153,8 +205,15 @@ Tambien puedes manejar reglas desde Telegram con `/addrule` y `/delrule`.
   - valida ruta de `GOOGLE_SERVICE_ACCOUNT_FILE`.
 - El bot no arranca en Docker
   - revisa `.env` y logs con `docker compose logs -f financebot`.
+- No se aplica categorizacion por IA
+  - valida `OPENROUTER_API_KEY` o `OPENROUTER_API_KEY_FILE`.
+  - valida conectividad saliente a `openrouter.ai`.
+- No aparecen graficas
+  - confirma que la cuenta de servicio tenga permisos de edicion en el spreadsheet.
+  - revisa que exista la hoja `SHEETS_DASHBOARD_WORKSHEET`.
 
 ## Seguridad
 
 - No subas `.env` ni `credentials/` al repo.
+- Para OpenRouter en servidores, prefiere `OPENROUTER_API_KEY_FILE` con secretos montados fuera del repositorio.
 - Si un token se expone, rotalo en BotFather inmediatamente.

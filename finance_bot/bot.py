@@ -6,6 +6,7 @@ from telebot.types import Message
 from finance_bot.categorizer import RuleCategorizer
 from finance_bot.config import Settings, load_categories, load_rules, save_rules
 from finance_bot.models import ExpenseRecord
+from finance_bot.openrouter_client import OpenRouterClient
 from finance_bot.parser import ParseExpenseError, parse_expense_text
 from finance_bot.sheets_client import SheetsClientError, SheetsExpenseWriter
 from finance_bot.validators import build_timestamps, is_allowed_chat, normalize_category, normalize_keyword
@@ -15,11 +16,15 @@ class FinanceBotApp:
     def __init__(self, settings: Settings):
         self.settings = settings
         self.categories = load_categories(settings.categories_file)
+        ai_categorizer = self._build_ai_categorizer()
         self.categorizer = RuleCategorizer(load_rules(settings.rules_file), default_category="otros")
+        self.categorizer.ai_categorizer = ai_categorizer
+        self.categorizer.ai_categories = sorted(set(self.categories))
         self.writer = SheetsExpenseWriter(
             spreadsheet_id=settings.google_sheets_id,
             service_account_file=settings.google_service_account_file,
             worksheet_name=settings.sheets_worksheet,
+            dashboard_worksheet_name=settings.sheets_dashboard_worksheet,
         )
         self.last_record: ExpenseRecord | None = None
 
@@ -165,6 +170,19 @@ class FinanceBotApp:
         if not text:
             return False
         return not text.startswith("/")
+
+    def _build_ai_categorizer(self) -> OpenRouterClient | None:
+        if not self.settings.openrouter_api_key:
+            return None
+
+        return OpenRouterClient(
+            api_key=self.settings.openrouter_api_key,
+            model=self.settings.openrouter_model,
+            timeout_seconds=self.settings.openrouter_timeout_seconds,
+            base_url=self.settings.openrouter_base_url,
+            site_url=self.settings.openrouter_site_url,
+            app_name=self.settings.openrouter_app_name,
+        )
 
     @staticmethod
     def _help_text() -> str:
